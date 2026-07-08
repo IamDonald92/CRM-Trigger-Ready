@@ -142,7 +142,7 @@ function find(id){return leads.find(function(l){return l.id===id;});}
 
 /* ---------- storage ---------- */
 function loadLocal(){
-  try{const v=localStorage.getItem(LKEY);if(v)leads=JSON.parse(v)||[];}catch(e){leads=[];}
+  try{const v=localStorage.getItem(LKEY);if(v)leads=(JSON.parse(v)||[]).map(normalise);}catch(e){leads=[];}
   try{const c=localStorage.getItem(CKEY);if(c)config=Object.assign(config,JSON.parse(c));}catch(e){}
 }
 function saveLocal(){try{localStorage.setItem(LKEY,JSON.stringify(leads));}catch(e){}}
@@ -196,8 +196,20 @@ async function pullFromSheet(showStatus){
   }
   return false;
 }
+const DATE_FIELDS=["partyDate","lastTouch","nextFollow","updated"];
+function cleanDate(v){
+  if(!v)return "";
+  v=String(v);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;           // already clean
+  const d=new Date(v);                                   // handles ISO "...T00:00:00.000Z" etc.
+  if(isNaN(d))return "";                                 // unreadable → blank rather than garbage
+  // use LOCAL components so UTC+2 doesn't shift the day
+  const p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
+}
 function normalise(o){
   const l={};FIELDS.forEach(f=>l[f]=o[f]!==undefined?o[f]:"");
+  DATE_FIELDS.forEach(f=>l[f]=cleanDate(l[f]));
   if(!l.id)l.id=uid();
   if(!l.tier)l.tier="warm";
   if(!l.status)l.status="new";
