@@ -204,8 +204,10 @@ function normalise(o){
 
 /* ---------- persistence entry ---------- */
 function save(){
+  saveLocal();        // write to device immediately — never lose a keystroke
+  flag();
   clearTimeout(saveT);
-  saveT=setTimeout(()=>{saveLocal();flag();pushToSheet();},250);
+  saveT=setTimeout(()=>{pushToSheet();},600);  // only the cloud sync is debounced
 }
 
 /* ---------- helpers ---------- */
@@ -345,12 +347,27 @@ document.body.addEventListener("click",e=>{
 document.body.addEventListener("input",e=>{
   const f=e.target.closest("[data-f]");if(!f)return;const l=find(f.dataset.id);if(!l)return;
   l[f.dataset.f]=f.target.value;l.updated=today();save();
+  // reflect the name in the card header live, without a re-render that would wipe fields
+  if(f.dataset.f==="name"){
+    const card=f.closest(".lead"); const nm=card&&card.querySelector(".lname");
+    if(nm)nm.textContent=f.target.value||"(no name)";
+  }
 });
 document.body.addEventListener("change",e=>{
   const f=e.target.closest("[data-f]");if(!f)return;const l=find(f.dataset.id);if(!l)return;
   // selects on iOS fire 'change' but not 'input' — save the value here so it persists
   l[f.dataset.f]=f.target.value;l.updated=today();save();
-  if(f.dataset.f==="tier"||f.dataset.f==="status")render();
+  // update the header pill/dot IN PLACE — do NOT re-render the list while editing (that wipes fields)
+  const card=f.closest(".lead");
+  if(f.dataset.f==="status"){
+    const pill=card&&card.querySelector(".spill"); const s=STATUS[l.status]||STATUS.new;
+    if(pill){pill.textContent=s.label;pill.style.background=s.color+"22";pill.style.color=s.color;pill.style.borderColor=s.color+"55";}
+    if(l.status==="lost"&&card&&!card.querySelector('[data-f="lostReason"]')){openId=l.id;render();}
+  }
+  if(f.dataset.f==="tier"){
+    const dot=card&&card.querySelector(".tierdot");
+    if(dot)dot.style.background=(TIERS[l.tier]||TIERS.cool).color;
+  }
 });
 
 /* ---------- settings ---------- */
