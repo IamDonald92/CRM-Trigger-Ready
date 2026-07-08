@@ -239,6 +239,7 @@ function isDue(l){
   return l.nextFollow && l.nextFollow<=today();
 }
 function matchesFilter(l){
+  if(l.id===openId)return true; // never hide the card being edited — changing its status must not eject it
   if(filter==="all")return true;
   if(filter==="due")return isDue(l);
   if(filter==="bookings")return l.status==="hold"||l.status==="booked";
