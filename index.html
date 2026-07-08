@@ -330,12 +330,9 @@ document.getElementById("addBtn").addEventListener("click",()=>{
   leads.unshift(l);openId=l.id;filter="all";save();render();
   window.scrollTo({top:0,behavior:"smooth"});
 });
-document.getElementById("chips").addEventListener("click",e=>{
-  const c=e.target.closest("[data-filter]");if(!c)return;filter=c.dataset.filter;render();
-});
 document.body.addEventListener("click",e=>{
   const chip=e.target.closest("[data-filter]");
-  if(chip){filter=chip.dataset.filter;render();return;}
+  if(chip){filter=chip.dataset.filter;openId=null;render();return;}
   const b=e.target.closest("[data-act]");if(!b)return;
   const act=b.dataset.act,id=b.dataset.id;
   if(act==="toggle"){openId=openId===id?null:id;render();}
