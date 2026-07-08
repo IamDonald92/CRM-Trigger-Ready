@@ -65,6 +65,7 @@
   .btn.touch{background:var(--red);color:#fff;}
   .btn.del{background:transparent;border:1px solid var(--reddim);color:var(--red);flex:0 0 auto;min-width:44px;}
   .btn.ghost{background:var(--card);border:1px solid var(--rule);color:var(--dim);}
+  .btn.done{background:var(--card2);border:1px solid var(--red);color:var(--red);}
 
   .add{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));
     background:var(--red);color:#fff;border:none;border-radius:30px;padding:14px 26px;font-size:15px;font-weight:600;
@@ -314,6 +315,9 @@ function renderList(){
           <button class="btn ghost" data-act="booked" data-id="${l.id}">Mark booked ✓</button>
           <button class="btn del" data-act="del" data-id="${l.id}">Delete</button>
         </div>
+        <div class="actrow">
+          <button class="btn done" data-act="done" data-id="${l.id}">Done — close</button>
+        </div>
       </div>
     </div>`;
   }).join("");
@@ -330,9 +334,12 @@ document.getElementById("chips").addEventListener("click",e=>{
   const c=e.target.closest("[data-filter]");if(!c)return;filter=c.dataset.filter;render();
 });
 document.body.addEventListener("click",e=>{
+  const chip=e.target.closest("[data-filter]");
+  if(chip){filter=chip.dataset.filter;render();return;}
   const b=e.target.closest("[data-act]");if(!b)return;
   const act=b.dataset.act,id=b.dataset.id;
   if(act==="toggle"){openId=openId===id?null:id;render();}
+  else if(act==="done"){openId=null;render();}
   else if(act==="touch"){const l=find(id);l.lastTouch=today();if(l.status==="new")l.status="contacted";
     l.nextFollow=addDays(TIER_DAYS[l.tier]||4);l.updated=today();save();render();}
   else if(act==="booked"){const l=find(id);l.status="booked";l.updated=today();save();render();}
@@ -343,7 +350,9 @@ document.body.addEventListener("input",e=>{
   l[f.dataset.f]=f.target.value;l.updated=today();save();
 });
 document.body.addEventListener("change",e=>{
-  const f=e.target.closest("[data-f]");if(!f)return;
+  const f=e.target.closest("[data-f]");if(!f)return;const l=find(f.dataset.id);if(!l)return;
+  // selects on iOS fire 'change' but not 'input' — save the value here so it persists
+  l[f.dataset.f]=f.target.value;l.updated=today();save();
   if(f.dataset.f==="tier"||f.dataset.f==="status")render();
 });
 
