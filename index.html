@@ -168,9 +168,8 @@ async function pushToSheet(){
   pushT=setTimeout(async()=>{
     setSync("busy","Syncing…");
     try{
-      const res=await fetch(config.url,{method:"POST",body:JSON.stringify({token:config.token,action:"save",leads:leads})});
-      // response may be unreadable due to redirect/CORS; treat completed POST as success
-      try{ const j=await res.json(); if(j&&j.error){setSync("err","Sync error");return;} }catch(e){}
+      await fetch(config.url,{method:"POST",mode:"no-cors",body:JSON.stringify({token:config.token,action:"save",leads:leads})});
+      // no-cors responses are unreadable by design — a completed POST is success
       setSync("ok","Synced");
     }catch(e){ setSync("err","Sync failed"); }
   },600);
@@ -210,7 +209,7 @@ function cleanDate(v){
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
 }
 function normalise(o){
-  const l={};FIELDS.forEach(f=>l[f]=o[f]!==undefined?o[f]:"");
+  const l={};FIELDS.forEach(f=>l[f]=(o[f]===undefined||o[f]===null)?"":String(o[f]));
   DATE_FIELDS.forEach(f=>l[f]=cleanDate(l[f]));
   if(!l.id)l.id=uid();
   if(!l.tier)l.tier="warm";
@@ -308,7 +307,7 @@ function renderList(){
   if(!list.length){el.innerHTML=`<div class="empty">${leads.length?"Nothing in this view. Try another filter.":"No leads yet. Tap <b>+ Add lead</b> to log your first one."}</div>`;return;}
   el.innerHTML=list.map(l=>{
     const t=TIERS[l.tier]||TIERS.cool, s=STATUS[l.status]||STATUS.new, open=l.id===openId;
-    const ph=(l.phone||"").replace(/[^0-9]/g,"");
+    const ph=String(l.phone||"").replace(/[^0-9]/g,"");
     const showLost=l.status==="lost";
     return `<div class="lead ${isDue(l)?'due':''} ${open?'open':''}">
       <div class="lhead" data-act="toggle" data-id="${l.id}">
