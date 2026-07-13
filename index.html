@@ -235,6 +235,8 @@ function normalise(o){
   if(!l.id)l.id=uid();
   if(!l.tier)l.tier="warm";
   if(!l.status)l.status="new";
+  l.status=String(l.status).toLowerCase();   // fold case so 'New' from any source matches the 'new' stage
+  l.tier=String(l.tier).toLowerCase();
   return l;
 }
 
