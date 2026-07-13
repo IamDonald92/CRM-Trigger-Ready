@@ -31,6 +31,15 @@
   .syncdot.ok{background:var(--booked);} .syncdot.busy{background:var(--warm);} .syncdot.err{background:var(--red);}
   .sub{color:var(--dim);font-size:12px;font-family:ui-monospace,monospace;margin:2px 0 14px;}
 
+  .searchbar{position:relative;margin-bottom:12px;}
+  .searchbar input{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--rule);
+    color:var(--ink);border-radius:9px;padding:10px 34px 10px 12px;font-size:14px;outline:none;}
+  .searchbar input:focus{border-color:var(--red);}
+  .searchbar #searchClear{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;
+    border:none;color:var(--dim);font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;display:none;}
+  .searchbar.has #searchClear{display:block;}
+  .stat{cursor:pointer;transition:border-color .12s;}
+  .stat.on{border-color:var(--red);}
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
   .stat{background:var(--card);border:1px solid var(--rule);border-radius:9px;padding:9px 6px;text-align:center;}
   .stat .n{font-family:ui-monospace,monospace;font-size:19px;font-weight:600;}
@@ -98,6 +107,10 @@
   </div>
   <div class="sub" id="sub">Lead pipeline</div>
 
+  <div class="searchbar">
+    <input id="searchBox" type="search" placeholder="Search name, phone, party, quote..." autocomplete="off">
+    <button id="searchClear" type="button" title="Clear">&times;</button>
+  </div>
   <div class="stats" id="stats"></div>
   <div class="chips" id="chips"></div>
   <div id="list"></div>
@@ -139,7 +152,7 @@ const STATUS={
 };
 const FIELDS=["id","name","phone","tier","status","party","partyDate","lastTouch","nextFollow","quote","lostReason","updated"];
 
-let leads=[], config={url:"",token:""}, filter="due", openId=null, saveT=null, pushT=null;
+let leads=[], config={url:"",token:""}, filter="due", search="", openId=null, saveT=null, pushT=null;
 function find(id){return leads.find(function(l){return l.id===id;});}
 
 /* ---------- storage ---------- */
@@ -251,24 +264,32 @@ function isDue(l){
   if(l.status==="new")return true;
   return l.nextFollow && l.nextFollow<=today();
 }
-function matchesFilter(l){
+function searchMatch(l){
+  if(!search)return true;
+  const q=search.toLowerCase();
+  return [l.name,l.phone,l.party,l.quote,l.partyDate,l.lostReason,(STATUS[l.status]||{}).label]
+    .some(v=>String(v||"").toLowerCase().includes(q));
+}
+function stageMatch(l){
   if(l.id===openId)return true; // never hide the card being edited — changing its status must not eject it
   if(filter==="all")return true;
   if(filter==="due")return isDue(l);
   if(filter==="bookings")return l.status==="hold"||l.status==="booked";
+  if(filter==="holds")return l.status==="hold";
   if(filter==="booked")return l.status==="booked";
   if(filter==="active")return l.status!=="booked"&&l.status!=="lost";
   if(filter==="lost")return l.status==="lost";
   return l.tier===filter;
 }
+function matchesFilter(l){ return stageMatch(l) && searchMatch(l); }
 
 /* ---------- render ---------- */
 function renderStats(){
   const total=leads.length, booked=leads.filter(l=>l.status==="booked").length,
     holds=leads.filter(l=>l.status==="hold").length, due=leads.filter(isDue).length;
   document.getElementById("stats").innerHTML=
-    [["due",due,"Due now"],["hold",holds,"Holds"],["booked",booked,"Booked"],["total",total+"/70","Leads"]]
-    .map(([k,n,l])=>`<div class="stat"><div class="n" style="color:${k==="due"?'var(--red)':k==="booked"?'var(--booked)':k==="hold"?'var(--hold)':'var(--ink)'}">${n}</div><div class="l">${l}</div></div>`).join("");
+    [["due",due,"Due now","due"],["hold",holds,"Holds","holds"],["booked",booked,"Booked","booked"],["total",total+"/70","Leads","all"]]
+    .map(([k,n,l,f])=>`<div class="stat ${filter===f?'on':''}" data-filter="${f}"><div class="n" style="color:${k==="due"?'var(--red)':k==="booked"?'var(--booked)':k==="hold"?'var(--hold)':'var(--ink)'}">${n}</div><div class="l">${l}</div></div>`).join("");
 }
 function renderChips(){
   const act=l=>l.status!=="booked"&&l.status!=="lost";
@@ -431,6 +452,22 @@ document.getElementById("cfgPull").addEventListener("click",()=>{
 /* ---------- boot ---------- */
 loadLocal();render();
 if(config.url)pullFromSheet(false);
+
+/* ---------- search ---------- */
+(function(){
+  var box=document.getElementById("searchBox"), clr=document.getElementById("searchClear"),
+      bar=box&&box.closest(".searchbar");
+  if(!box)return;
+  var t=null;
+  box.addEventListener("input",function(){
+    bar.classList.toggle("has",!!box.value);
+    clearTimeout(t);
+    t=setTimeout(function(){ search=box.value.trim(); render(); },120);
+  });
+  clr.addEventListener("click",function(){
+    box.value=""; search=""; bar.classList.remove("has"); render(); box.focus();
+  });
+})();
 </script>
 </body>
 </html>
