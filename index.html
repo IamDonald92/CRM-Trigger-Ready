@@ -40,6 +40,12 @@
   .searchbar.has #searchClear{display:block;}
   .stat{cursor:pointer;transition:border-color .12s;}
   .stat.on{border-color:var(--red);}
+  .stat{position:relative;}
+  .stat.alert{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset;animation:newpulse 1.6s ease-in-out infinite;}
+  @keyframes newpulse{0%,100%{box-shadow:0 0 0 1px var(--red) inset;}50%{box-shadow:0 0 0 2px var(--red) inset;}}
+  .stat .bell{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;
+    background:var(--red);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;
+    box-shadow:0 0 0 2px var(--bg,#15171c);font-family:ui-monospace,monospace;}
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
   .stat{background:var(--card);border:1px solid var(--rule);border-radius:9px;padding:9px 6px;text-align:center;}
   .stat .n{font-family:ui-monospace,monospace;font-size:19px;font-weight:600;}
@@ -57,6 +63,8 @@
   .tierdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
   .lname{flex:1;min-width:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .spill{font-family:ui-monospace,monospace;font-size:9.5px;padding:3px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;}
+  .srcbadge{font-family:ui-monospace,monospace;font-size:9px;padding:3px 7px;border-radius:20px;text-transform:uppercase;
+    letter-spacing:.04em;flex-shrink:0;background:#2563EB22;color:#5B9BFF;border:1px solid #2563EB66;}
   .lmeta{padding:0 13px 11px;font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;gap:4px 12px;}
   .lmeta .due{color:var(--red);font-weight:600;}
   .lmeta .party{width:100%;color:var(--ink);opacity:.85;}
@@ -152,7 +160,7 @@ const STATUS={
 };
 const FIELDS=["id","name","phone","tier","status","party","partyDate","lastTouch","nextFollow","quote","lostReason","updated"];
 
-let leads=[], config={url:"",token:""}, filter="due", search="", openId=null, saveT=null, pushT=null;
+let leads=[], config={url:"",token:""}, filter="new", search="", openId=null, saveT=null, pushT=null;
 function find(id){return leads.find(function(l){return l.id===id;});}
 
 /* ---------- storage ---------- */
@@ -270,12 +278,15 @@ function searchMatch(l){
   return [l.name,l.phone,l.party,l.quote,l.partyDate,l.lostReason,(STATUS[l.status]||{}).label]
     .some(v=>String(v||"").toLowerCase().includes(q));
 }
+function isWeb(l){ return String(l.id||"").indexOf("WEB-")===0; }
 function stageMatch(l){
   if(l.id===openId)return true; // never hide the card being edited — changing its status must not eject it
   if(filter==="all")return true;
   if(filter==="due")return isDue(l);
   if(filter==="bookings")return l.status==="hold"||l.status==="booked";
   if(filter==="holds")return l.status==="hold";
+  if(filter==="new")return l.status==="new";
+  if(filter==="web")return isWeb(l);
   if(filter==="booked")return l.status==="booked";
   if(filter==="active")return l.status!=="booked"&&l.status!=="lost";
   if(filter==="lost")return l.status==="lost";
@@ -286,10 +297,11 @@ function matchesFilter(l){ return stageMatch(l) && searchMatch(l); }
 /* ---------- render ---------- */
 function renderStats(){
   const total=leads.length, booked=leads.filter(l=>l.status==="booked").length,
-    holds=leads.filter(l=>l.status==="hold").length, due=leads.filter(isDue).length;
+    holds=leads.filter(l=>l.status==="hold").length, due=leads.filter(isDue).length,
+    fresh=leads.filter(l=>l.status==="new").length;
   document.getElementById("stats").innerHTML=
-    [["due",due,"Due now","due"],["hold",holds,"Holds","holds"],["booked",booked,"Booked","booked"],["total",total+"/70","Leads","all"]]
-    .map(([k,n,l,f])=>`<div class="stat ${filter===f?'on':''}" data-filter="${f}"><div class="n" style="color:${k==="due"?'var(--red)':k==="booked"?'var(--booked)':k==="hold"?'var(--hold)':'var(--ink)'}">${n}</div><div class="l">${l}</div></div>`).join("");
+    [["new",fresh,"New","new"],["due",due,"Due now","due"],["hold",holds,"Holds","holds"],["booked",booked,"Booked","booked"]]
+    .map(([k,n,l,f])=>`<div class="stat ${filter===f?'on':''}${k==="new"&&n>0?' alert':''}" data-filter="${f}">${k==="new"&&n>0?'<span class="bell">'+n+'</span>':''}<div class="n" style="color:${k==="new"?'var(--red)':k==="due"?'var(--red)':k==="booked"?'var(--booked)':k==="hold"?'var(--hold)':'var(--ink)'}">${n}</div><div class="l">${l}</div></div>`).join("");
 }
 function renderChips(){
   const act=l=>l.status!=="booked"&&l.status!=="lost";
@@ -301,9 +313,10 @@ function renderChips(){
     bookings:leads.filter(l=>l.status==="hold"||l.status==="booked").length,
     active:leads.filter(act).length,
     lost:leads.filter(l=>l.status==="lost").length,
+    web:leads.filter(isWeb).length,
     all:leads.length
   };
-  const chips=[["due","Due"],["hot","Hot"],["warm","Warm"],["cool","Cool"],["bookings","Bookings"],["active","Active"],["lost","Lost"],["all","All"]];
+  const chips=[["web","Web"],["due","Due"],["hot","Hot"],["warm","Warm"],["cool","Cool"],["bookings","Bookings"],["active","Active"],["lost","Lost"],["all","All"]];
   document.getElementById("chips").innerHTML=chips.map(([k,label])=>
     `<button class="chip ${filter===k?'on':''}" data-filter="${k}">${label}<span class="c">${counts[k]}</span></button>`).join("");
 }
@@ -335,6 +348,7 @@ function renderList(){
         <span class="tierdot" style="background:${t.color}"></span>
         <span class="lname">${esc(l.name)||"(no name)"}</span>
         <span class="spill" style="background:${s.color}22;color:${s.color};border:1px solid ${s.color}55">${s.label}</span>
+        ${isWeb(l)?`<span class="srcbadge">Website</span>`:""}
       </div>
       <div class="lmeta">
         ${l.party?`<span class="party">${esc(l.party)}</span>`:""}
