@@ -50,6 +50,7 @@
   .stat{background:var(--card);border:1px solid var(--rule);border-radius:9px;padding:9px 6px;text-align:center;}
   .stat .n{font-family:ui-monospace,monospace;font-size:19px;font-weight:600;}
   .stat .l{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+  .stat .m{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--ink);opacity:.72;margin-top:3px;}
 
   .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:6px;-webkit-overflow-scrolling:touch;}
   .chip{flex:0 0 auto;background:var(--card);border:1px solid var(--rule);color:var(--dim);
@@ -67,7 +68,14 @@
     letter-spacing:.04em;flex-shrink:0;background:#2563EB22;color:#5B9BFF;border:1px solid #2563EB66;}
   .lmeta{padding:0 13px 11px;font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;gap:4px 12px;}
   .lmeta .due{color:var(--red);font-weight:600;}
-  .lmeta .party{width:100%;color:var(--ink);opacity:.85;}
+  .lmeta .mrow{width:100%;display:flex;flex-wrap:wrap;gap:3px 12px;align-items:baseline;}
+  .lmeta .q{font-family:ui-monospace,monospace;font-weight:600;color:var(--ink);}
+  .lmeta .soft{opacity:.6;}
+  /* notes stay clamped while the card is shut so the list can be scanned */
+  .lmeta .party{width:100%;color:var(--ink);opacity:.72;margin-top:2px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .lead.open .lmeta .party{-webkit-line-clamp:99;}
+  textarea.notes{min-height:120px;}
 
   .edit{border-top:1px solid var(--rule);padding:12px 13px;background:var(--card2);display:none;}
   .lead.open .edit{display:block;}
@@ -87,11 +95,12 @@
   .btn.done{background:var(--card2);border:1px solid var(--red);color:var(--red);}
   .btn.save{background:var(--booked);color:#052a15;}
 
-  .add{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));
-    background:var(--red);color:#fff;border:none;border-radius:30px;padding:14px 26px;font-size:15px;font-weight:600;
-    box-shadow:0 6px 20px rgba(0,0,0,.5);cursor:pointer;z-index:20;}
+  .tbright{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .add{background:var(--red);color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:13px;font-weight:600;
+    cursor:pointer;white-space:nowrap;}
+  .add:active{opacity:.8;}
   .empty{text-align:center;color:var(--dim);font-size:13.5px;padding:30px 16px;border:1px dashed var(--rule);border-radius:10px;line-height:1.5;}
-  .flag{position:fixed;bottom:80px;right:16px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--dim);
+  .flag{position:fixed;bottom:20px;right:16px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--dim);
     background:var(--card2);border:1px solid var(--rule);padding:6px 10px;border-radius:6px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:30;}
   .flag.show{opacity:1;}
 
@@ -112,7 +121,7 @@
     h1{font-size:30px;} .sub{font-size:14px;}
     .searchbar input{font-size:17px;padding:13px 40px 13px 15px;}
     .stats{gap:14px;grid-template-columns:repeat(4,1fr);}
-    .stat{padding:16px 12px;} .stat .n{font-size:26px;} .stat .l{font-size:12px;}
+    .stat{padding:16px 12px;} .stat .n{font-size:26px;} .stat .l{font-size:12px;} .stat .m{font-size:13px;}
     .chip{font-size:14px;padding:9px 16px;} .chip .c{font-size:12px;}
     .lname{font-size:18px;} .spill,.srcbadge{font-size:11px;padding:4px 9px;}
     .lhead{padding:15px 16px;} .lmeta{font-size:13.5px;padding:0 16px 14px;}
@@ -134,7 +143,10 @@
 <div class="wrap">
   <div class="topbar">
     <h1>Trigger Ready CRM</h1>
-    <div class="synced" id="syncBtn"><span class="syncdot" id="syncDot"></span><span id="syncTxt">Local only</span></div>
+    <div class="tbright">
+      <button class="add" id="addBtn">+ Add</button>
+      <div class="synced" id="syncBtn"><span class="syncdot" id="syncDot"></span><span id="syncTxt">Local only</span></div>
+    </div>
   </div>
   <div class="sub" id="sub">Lead pipeline</div>
 
@@ -147,7 +159,6 @@
   <div id="list"></div>
 </div>
 
-<button class="add" id="addBtn">+ Add lead</button>
 <div class="flag" id="flag">saved</div>
 
 <div class="overlay" id="overlay">
@@ -181,7 +192,7 @@ const STATUS={
   talking:{label:"In convo",color:"#5C8AA6"},hold:{label:"Pencil-hold",color:"var(--hold)"},
   booked:{label:"Booked ✓",color:"var(--booked)"},lost:{label:"Lost",color:"var(--lost)"}
 };
-const FIELDS=["id","name","phone","tier","status","party","partyDate","lastTouch","nextFollow","quote","lostReason","updated"];
+const FIELDS=["id","name","phone","tier","status","party","details","partyDate","lastTouch","nextFollow","quote","lostReason","updated"];
 
 let leads=[], config={url:"",token:""}, filter="new", search="", openId=null, saveT=null, pushT=null;
 function find(id){return leads.find(function(l){return l.id===id;});}
@@ -300,10 +311,14 @@ function isDue(l){
 function searchMatch(l){
   if(!search)return true;
   const q=search.toLowerCase();
-  return [l.name,l.phone,l.party,l.quote,l.partyDate,l.lostReason,(STATUS[l.status]||{}).label]
+  return [l.name,l.phone,l.party,l.details,l.quote,l.partyDate,l.lostReason,(STATUS[l.status]||{}).label]
     .some(v=>String(v||"").toLowerCase().includes(q));
 }
 function isWeb(l){ return String(l.id||"").indexOf("WEB-")===0; }
+/* quote strings can hold spaces, commas or a P prefix - strip to a number */
+function num(v){ const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,"")); return isNaN(n)?0:n; }
+function pula(v){ const n=num(v); return n?"P"+n.toLocaleString("en-GB").replace(/,/g,"\u2009"):""; }
+function sumQuotes(arr){ return arr.reduce(function(t,l){return t+num(l.quote);},0); }
 function stageMatch(l){
   if(l.id===openId)return true; // never hide the card being edited — changing its status must not eject it
   if(filter==="all")return true;
@@ -321,12 +336,16 @@ function matchesFilter(l){ return stageMatch(l) && searchMatch(l); }
 
 /* ---------- render ---------- */
 function renderStats(){
-  const total=leads.length, booked=leads.filter(l=>l.status==="booked").length,
-    holds=leads.filter(l=>l.status==="hold").length, due=leads.filter(isDue).length,
-    fresh=leads.filter(l=>l.status==="new").length;
+  const fresh=leads.filter(l=>l.status==="new"),
+    dueL=leads.filter(isDue),
+    holdL=leads.filter(l=>l.status==="hold"),
+    bookL=leads.filter(l=>l.status==="booked");
   document.getElementById("stats").innerHTML=
-    [["new",fresh,"New","new"],["due",due,"Due now","due"],["hold",holds,"Holds","holds"],["booked",booked,"Booked","booked"]]
-    .map(([k,n,l,f])=>`<div class="stat ${filter===f?'on':''}${k==="new"&&n>0?' alert':''}" data-filter="${f}">${k==="new"&&n>0?'<span class="bell">'+n+'</span>':''}<div class="n" style="color:${k==="new"?'var(--red)':k==="due"?'var(--red)':k==="booked"?'var(--booked)':k==="hold"?'var(--hold)':'var(--ink)'}">${n}</div><div class="l">${l}</div></div>`).join("");
+    [["new",fresh,"New","new"],["due",dueL,"Due now","due"],["hold",holdL,"Holds","holds"],["booked",bookL,"Booked","booked"]]
+    .map(([k,arr,l,f])=>{
+      const n=arr.length, m=pula(sumQuotes(arr));
+      return `<div class="stat ${filter===f?'on':''}${k==="new"&&n>0?' alert':''}" data-filter="${f}">${k==="new"&&n>0?'<span class="bell">'+n+'</span>':''}<div class="n" style="color:${k==="new"?'var(--red)':k==="due"?'var(--red)':k==="booked"?'var(--booked)':k==="hold"?'var(--hold)':'var(--ink)'}">${n}</div><div class="l">${l}</div><div class="m">${m||"&nbsp;"}</div></div>`;
+    }).join("");
 }
 function renderChips(){
   const act=l=>l.status!=="booked"&&l.status!=="lost";
@@ -376,9 +395,13 @@ function renderList(){
         ${isWeb(l)?`<span class="srcbadge">Website</span>`:""}
       </div>
       <div class="lmeta">
+        <span class="mrow">
+          <span>${dueLabel(l)}</span>
+          ${l.quote?`<span class="q">${pula(l.quote)}</span>`:""}
+          ${l.details?`<span>${esc(l.details)}</span>`:""}
+          ${l.lastTouch?`<span class="soft">Last: ${l.lastTouch}</span>`:""}
+        </span>
         ${l.party?`<span class="party">${esc(l.party)}</span>`:""}
-        <span>${dueLabel(l)}</span>
-        ${l.lastTouch?`<span>Last: ${l.lastTouch}</span>`:""}
       </div>
       <div class="edit">
         <div class="row2">
@@ -394,7 +417,9 @@ function renderList(){
           </select></div>
         </div>
         <div class="fld" style="margin-bottom:9px"><label>Party details (age · players · venue)</label>
-          <textarea data-f="party" data-id="${l.id}" placeholder="e.g. 9-12 · up to 10 · Tlokweng">${esc(l.party)}</textarea></div>
+          <input value="${esc(l.details)}" data-f="details" data-id="${l.id}" placeholder="e.g. 9-12 · up to 10 · Tlokweng"></div>
+        <div class="fld" style="margin-bottom:9px"><label>Notes</label>
+          <textarea data-f="party" data-id="${l.id}" class="notes" placeholder="What was said, what you promised, what happens next">${esc(l.party)}</textarea></div>
         <div class="row2">
           <div class="fld"><label>Quote (P)</label><input value="${esc(l.quote)}" data-f="quote" data-id="${l.id}" placeholder="2500"></div>
           <div class="fld"><label>Party date</label><input type="date" value="${l.partyDate||''}" data-f="partyDate" data-id="${l.id}"></div>
@@ -436,7 +461,7 @@ document.body.addEventListener("click",e=>{
   if(act==="toggle"){openId=openId===id?null:id;render();}
   else if(act==="save"){commitCard(id);}
   else if(act==="done"){commitCard(id);const l=find(id);
-    if(l&&!l.name&&!l.phone&&!l.party){leads=leads.filter(x=>x.id!==id);}
+    if(l&&!l.name&&!l.phone&&!l.party&&!l.details){leads=leads.filter(x=>x.id!==id);}
     openId=null;render();}
   else if(act==="touch"){commitCard(id);const l=find(id);l.lastTouch=today();if(l.status==="new")l.status="contacted";
     l.nextFollow=addDays(TIER_DAYS[l.tier]||4);l.updated=today();save();render();}
