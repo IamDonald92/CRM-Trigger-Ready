@@ -181,8 +181,9 @@
 <script>
 const LKEY="tr-crm-leads", CKEY="tr-crm-config";
 const uid=()=>Math.random().toString(36).slice(2,9);
-const today=()=>new Date().toISOString().slice(0,10);
-function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+function ymd(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
+const today=()=>ymd(new Date());
+function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return ymd(d);}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
 const TIERS={hot:{label:"Hot",color:"var(--hot)"},warm:{label:"Warm",color:"var(--warm)"},cool:{label:"Cool",color:"var(--cool)"}};
@@ -213,22 +214,40 @@ function setSync(state,txt){
   dot.className="syncdot"+(state?(" "+state):"");
   t.textContent=txt;
 }
+const PKEY="tr-crm-pending";
+function isPending(){try{return localStorage.getItem(PKEY)==="1";}catch(e){return false;}}
+function setPending(v){try{v?localStorage.setItem(PKEY,"1"):localStorage.removeItem(PKEY);}catch(e){}}
 function refreshSyncLabel(){
   if(!config.url){setSync("","Local only");return;}
+  if(isPending()){setSync("busy","Not yet saved to Sheet");return;}
   setSync("ok","Synced");
 }
-async function pushToSheet(){
+let pushSeq=0;
+/* send everything to the Sheet NOW. Pending flag only clears if no newer edit happened meanwhile. */
+async function pushNow(){
+  if(!config.url)return false;
+  clearTimeout(pushT);
+  const seq=++pushSeq;
+  const body=JSON.stringify({token:config.token,action:"save",leads:leads});
+  const opts={method:"POST",mode:"no-cors",body:body};
+  if(body.length<60000)opts.keepalive=true;   // lets the send finish even if you switch to WhatsApp
+  setSync("busy","Syncing…");
+  try{
+    await fetch(config.url,opts);
+    if(seq===pushSeq){setPending(false);setSync("ok","Synced");}
+    return true;
+  }catch(e){ setSync("err","Not saved to Sheet, will retry"); return false; }
+}
+function pushToSheet(){
   if(!config.url)return;
   clearTimeout(pushT);
-  pushT=setTimeout(async()=>{
-    setSync("busy","Syncing…");
-    try{
-      await fetch(config.url,{method:"POST",mode:"no-cors",body:JSON.stringify({token:config.token,action:"save",leads:leads})});
-      // no-cors responses are unreadable by design — a completed POST is success
-      setSync("ok","Synced");
-    }catch(e){ setSync("err","Sync failed"); }
-  },600);
+  pushT=setTimeout(pushNow,300);
 }
+/* leaving the app (switching to WhatsApp, locking the phone): flush unsent edits immediately */
+function flushIfPending(){ if(config.url&&isPending())pushNow(); }
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden")flushIfPending(); });
+window.addEventListener("pagehide",flushIfPending);
+window.addEventListener("online",flushIfPending);
 async function pullFromSheet(showStatus){
   if(!config.url)return false;
   const st=document.getElementById("cfgStatus");
@@ -238,6 +257,7 @@ async function pullFromSheet(showStatus){
     const res=await fetch(config.url+"?token="+encodeURIComponent(config.token)+"&t="+Date.now());
     const j=await res.json();
     if(j&&j.leads){
+      if(isPending()){ await pushNow(); if(showStatus)st.textContent="Sent this device's unsaved edits first. Pull again to refresh."; return true; }
       leads=j.leads.map(normalise);
       saveLocal();render();
       setSync("ok","Synced");
@@ -276,10 +296,11 @@ function normalise(o){
 
 /* ---------- persistence entry ---------- */
 function save(){
-  saveLocal();        // write to device immediately — never lose a keystroke
+  saveLocal();        // write to device immediately, never lose a keystroke
+  setPending(true);
   flag();
-  clearTimeout(saveT);
-  saveT=setTimeout(()=>{pushToSheet();},600);  // only the cloud sync is debounced
+  if(config.url)setSync("busy","Not yet saved to Sheet");
+  pushToSheet();      // single short debounce, and flushed instantly if you leave the app
 }
 /* read EVERY field of a card straight from the screen and store it — the reliable save */
 function commitCard(id){
@@ -288,8 +309,8 @@ function commitCard(id){
     l[el.dataset.f]=el.value;
   });
   l.updated=today();
-  saveLocal();
-  clearTimeout(saveT); saveT=setTimeout(function(){pushToSheet();},600);
+  saveLocal(); setPending(true);
+  pushToSheet();
   flag("Saved ✓");
   // refresh the header (name, tier dot, status pill) in place without wiping the form
   var anyField=document.querySelector('[data-f][data-id="'+id+'"]');
@@ -480,7 +501,12 @@ document.body.addEventListener("input",e=>{
 document.body.addEventListener("change",e=>{
   const f=e.target.closest("[data-f]");if(!f)return;const l=find(f.dataset.id);if(!l)return;
   // selects on iOS fire 'change' but not 'input' — save the value here so it persists
-  l[f.dataset.f]=f.value;l.updated=today();save();
+  l[f.dataset.f]=f.value;l.updated=today();
+  if(f.dataset.f==="status"&&f.value!=="new"){
+    l.lastTouch=today();
+    if(["contacted","talking","hold"].includes(f.value))l.nextFollow=addDays(TIER_DAYS[l.tier]||4);
+  }
+  save();
   // status/tier changes affect labels & colours — safe to re-render now that every field saves on input
   if(f.dataset.f==="status"||f.dataset.f==="tier"){render();}
 });
@@ -515,7 +541,7 @@ document.getElementById("cfgPull").addEventListener("click",()=>{
 
 /* ---------- boot ---------- */
 loadLocal();render();
-if(config.url)pullFromSheet(false);
+if(config.url){ if(isPending()){pushNow().then(()=>pullFromSheet(false));} else pullFromSheet(false); }
 
 /* ---------- search ---------- */
 (function(){
