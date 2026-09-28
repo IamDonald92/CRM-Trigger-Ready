@@ -217,6 +217,9 @@ function setSync(state,txt){
 const PKEY="tr-crm-pending";
 function isPending(){try{return localStorage.getItem(PKEY)==="1";}catch(e){return false;}}
 function setPending(v){try{v?localStorage.setItem(PKEY,"1"):localStorage.removeItem(PKEY);}catch(e){}}
+const DKEY="tr-crm-deleted";
+function getDeleted(){try{return JSON.parse(localStorage.getItem(DKEY)||"[]");}catch(e){return [];}}
+function markDeleted(id){const d=getDeleted();if(d.indexOf(id)<0)d.push(id);try{localStorage.setItem(DKEY,JSON.stringify(d));}catch(e){}}
 function refreshSyncLabel(){
   if(!config.url){setSync("","Local only");return;}
   if(isPending()){setSync("busy","Not yet saved to Sheet");return;}
@@ -228,13 +231,15 @@ async function pushNow(){
   if(!config.url)return false;
   clearTimeout(pushT);
   const seq=++pushSeq;
-  const body=JSON.stringify({token:config.token,action:"save",leads:leads});
+  const sentDeleted=getDeleted();
+  const body=JSON.stringify({token:config.token,action:"save",leads:leads,deleted:sentDeleted});
   const opts={method:"POST",mode:"no-cors",body:body};
   if(body.length<60000)opts.keepalive=true;   // lets the send finish even if you switch to WhatsApp
   setSync("busy","Syncing…");
   try{
     await fetch(config.url,opts);
-    if(seq===pushSeq){setPending(false);setSync("ok","Synced");}
+    if(seq===pushSeq){setPending(false);setSync("ok","Synced");
+      const left=getDeleted().filter(x=>sentDeleted.indexOf(x)<0);try{localStorage.setItem(DKEY,JSON.stringify(left));}catch(e){}}
     return true;
   }catch(e){ setSync("err","Not saved to Sheet, will retry"); return false; }
 }
@@ -247,6 +252,8 @@ function pushToSheet(){
 function flushIfPending(){ if(config.url&&isPending())pushNow(); }
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden")flushIfPending(); });
 window.addEventListener("pagehide",flushIfPending);
+/* coming back to the app: pick up website leads and edits made elsewhere */
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&config.url&&!isPending()&&!openId)pullFromSheet(false); });
 window.addEventListener("online",flushIfPending);
 async function pullFromSheet(showStatus){
   if(!config.url)return false;
@@ -482,12 +489,12 @@ document.body.addEventListener("click",e=>{
   if(act==="toggle"){openId=openId===id?null:id;render();}
   else if(act==="save"){commitCard(id);}
   else if(act==="done"){commitCard(id);const l=find(id);
-    if(l&&!l.name&&!l.phone&&!l.party&&!l.details){leads=leads.filter(x=>x.id!==id);}
+    if(l&&!l.name&&!l.phone&&!l.party&&!l.details){markDeleted(id);leads=leads.filter(x=>x.id!==id);}
     openId=null;render();}
   else if(act==="touch"){commitCard(id);const l=find(id);l.lastTouch=today();if(l.status==="new")l.status="contacted";
     l.nextFollow=addDays(TIER_DAYS[l.tier]||4);l.updated=today();save();render();}
   else if(act==="booked"){commitCard(id);const l=find(id);l.status="booked";l.updated=today();save();render();}
-  else if(act==="del"){const l=find(id);if(confirm(`Delete ${l.name||"this lead"}?`)){leads=leads.filter(x=>x.id!==id);save();render();}}
+  else if(act==="del"){const l=find(id);if(confirm(`Delete ${l.name||"this lead"}?`)){markDeleted(id);leads=leads.filter(x=>x.id!==id);save();render();}}
 });
 document.body.addEventListener("input",e=>{
   const f=e.target.closest("[data-f]");if(!f)return;const l=find(f.dataset.id);if(!l)return;
